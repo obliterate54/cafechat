@@ -115,10 +115,10 @@ const ProductManagement = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-2xl font-bold text-blue-800">إدارة المنتجات</h2>
+        <h2 className="text-2xl font-bold text-cafe-brown-dark">إدارة المنتجات</h2>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600" onClick={resetForm}>
+            <Button className="bg-gradient-to-r from-cafe-brown to-[#7A3420] hover:from-cafe-brown hover:to-[#7A3420]" onClick={resetForm}>
               <Plus className="w-4 h-4 mr-2" />إضافة منتج جديد
             </Button>
           </DialogTrigger>
@@ -153,11 +153,11 @@ const ProductManagement = () => {
         />
       )}
 
-      <Card className="bg-white/60 backdrop-blur-sm border-blue-100"><CardContent className="pt-6"><div className="relative"><Search className="absolute right-3 top-3 w-4 h-4 text-gray-400" /><Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ابحث عن المنتجات..." className="pr-10" /></div></CardContent></Card>
+      <Card className="bg-white/60 backdrop-blur-sm border-cafe-beige"><CardContent className="pt-6"><div className="relative"><Search className="absolute right-3 top-3 w-4 h-4 text-gray-400" /><Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ابحث عن المنتجات..." className="pr-10" /></div></CardContent></Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredProducts.map((product) => (
-          <Card key={product.id} className="bg-white/80 backdrop-blur-sm border-blue-100 hover:shadow-lg transition-all duration-200">
+          <Card key={product.id} className="bg-white/80 backdrop-blur-sm border-cafe-beige hover:shadow-lg transition-all duration-200">
             <CardHeader className="pb-3">
               <div className="flex justify-between items-start gap-3">
                 <CardTitle className="text-lg text-gray-800">{product.name}</CardTitle>
@@ -166,7 +166,7 @@ const ProductManagement = () => {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex justify-between"><span>السعر:</span><span className="font-bold text-blue-600">{product.price.toFixed(2)} د.ل</span></div>
+                <div className="flex justify-between"><span>السعر:</span><span className="font-bold text-cafe-brown">{product.price.toFixed(2)} د.ل</span></div>
                 <div className="flex justify-between"><span>المخزون:</span><span className="font-semibold">{product.stock}</span></div>
                 {product.barcode && <div className="flex justify-between gap-3"><span>الباركود:</span><span className="font-mono text-xs">{product.barcode}</span></div>}
               </div>
@@ -179,7 +179,7 @@ const ProductManagement = () => {
         ))}
       </div>
 
-      {filteredProducts.length === 0 && <Card className="bg-white/60 backdrop-blur-sm border-blue-100"><CardContent className="py-12 text-center text-gray-500"><Package className="w-12 h-12 mx-auto mb-4 text-gray-300" /><p>لا توجد منتجات مطابقة</p></CardContent></Card>}
+      {filteredProducts.length === 0 && <Card className="bg-white/60 backdrop-blur-sm border-cafe-beige"><CardContent className="py-12 text-center text-gray-500"><Package className="w-12 h-12 mx-auto mb-4 text-gray-300" /><p>لا توجد منتجات مطابقة</p></CardContent></Card>}
     </div>
   );
 };

@@ -31,22 +31,22 @@ const Index = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50" dir="rtl">
-      <div className="bg-white/80 backdrop-blur-sm border-b border-blue-100 sticky top-0 z-50">
+    <div className="min-h-screen bg-gradient-to-br from-cafe-cream via-cafe-beige to-cafe-sand" dir="rtl">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-cafe-beige sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
+              <div className="w-12 h-12 bg-gradient-to-r from-cafe-brown to-[#7A3420] rounded-xl flex items-center justify-center">
                 <Calculator className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">نظام نقطة البيع</h1>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-cafe-brown to-[#7A3420] bg-clip-text text-transparent">نظام نقطة البيع</h1>
                 <p className="text-sm text-gray-600">نسخة بصلاحيات دخول وجلسات بيع وإلغاء مبيعات</p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-end">
               <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-200">متصل</Badge>
-              <Badge variant="outline" className="text-blue-600 border-blue-200 flex items-center gap-1"><UserCircle2 className="w-4 h-4" />{user.displayName}</Badge>
+              <Badge variant="outline" className="text-cafe-brown border-cafe-sand flex items-center gap-1"><UserCircle2 className="w-4 h-4" />{user.displayName}</Badge>
               <Badge variant="outline" className="text-purple-600 border-purple-200 flex items-center gap-1"><ShieldCheck className="w-4 h-4" />{isAdmin ? 'مدير' : 'موظف كافيه'}</Badge>
               <Button variant="outline" onClick={logout}><LogOut className="w-4 h-4 ml-2" />تسجيل الخروج</Button>
             </div>
@@ -56,11 +56,11 @@ const Index = () => {
 
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full bg-white/60 backdrop-blur-sm border border-blue-100 h-16`} style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} dir="rtl">
+          <TabsList className={`grid w-full bg-white/60 backdrop-blur-sm border border-cafe-beige h-16`} style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} dir="rtl">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
-                <TabsTrigger key={tab.value} value={tab.value} className="flex-col gap-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
+                <TabsTrigger key={tab.value} value={tab.value} className="flex-col gap-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-cafe-brown data-[state=active]:to-[#7A3420] data-[state=active]:text-white">
                   <Icon className="w-5 h-5" />
                   <span className="text-xs">{tab.label}</span>
                 </TabsTrigger>

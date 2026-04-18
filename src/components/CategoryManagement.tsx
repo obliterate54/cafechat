@@ -94,10 +94,10 @@ const CategoryManagement = ({
   };
 
   return (
-    <Card className="bg-white/60 backdrop-blur-sm border-blue-100">
+    <Card className="bg-white/60 backdrop-blur-sm border-cafe-beige">
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle className="flex items-center gap-2 text-blue-800">
+          <CardTitle className="flex items-center gap-2 text-cafe-brown-dark">
             <Tag className="w-5 h-5" />
             إدارة الفئات
           </CardTitle>
@@ -106,7 +106,7 @@ const CategoryManagement = ({
               <Button
                 variant="outline"
                 onClick={resetForm}
-                className="border-blue-200 hover:bg-blue-50"
+                className="border-cafe-sand hover:bg-cafe-cream"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 إضافة فئة
@@ -165,7 +165,7 @@ const CategoryManagement = ({
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {categories.map((category) => (
-            <Card key={category.id} className="bg-white/80 border-blue-100">
+            <Card key={category.id} className="bg-white/80 border-cafe-beige">
               <CardContent className="p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-2">
@@ -184,7 +184,7 @@ const CategoryManagement = ({
 
                 {category.description && <p className="text-sm text-gray-600 mb-3">{category.description}</p>}
 
-                <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                <Badge variant="secondary" className="bg-cafe-cream text-blue-700">
                   <Package className="w-3 h-3 mr-1" />
                   فئة محفوظة
                 </Badge>

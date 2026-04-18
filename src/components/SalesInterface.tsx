@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import type { CartItem, Product, SaleInvoice, SalesSession } from '@/types/pos';
 import { useAuth } from '@/contexts/AuthContext';
 import { printSaleReceipt } from '@/lib/receipt';
+import { printSaleReceiptQz } from '@/lib/qzPrint';
 
 const SalesInterface = () => {
   const { user } = useAuth();
@@ -102,34 +103,64 @@ const SalesInterface = () => {
   const calculateTotal = () => cart.reduce((total, item) => total + item.price * item.quantity, 0);
 
   const handleCheckout = async () => {
-    if (cart.length === 0) {
-      toast({ title: 'السلة فارغة', description: 'يرجى إضافة منتجات إلى السلة أولاً', variant: 'destructive' });
-      return;
-    }
+  if (cart.length === 0) {
+    toast({
+      title: 'السلة فارغة',
+      description: 'يرجى إضافة منتجات إلى السلة أولاً',
+      variant: 'destructive',
+    });
+    return;
+  }
 
-    const now = new Date();
-    const date = now.toISOString().slice(0, 10);
-    const time = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
-    const invoiceNumber = `INV-${date.replace(/-/g, '')}-${now.getTime().toString().slice(-4)}`;
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const time = now.toLocaleTimeString('ar-SA', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const invoiceNumber = `INV-${date.replace(/-/g, '')}-${now.getTime().toString().slice(-4)}`;
+
+  try {
+    const created = await api.createSale({
+      invoiceNumber,
+      date,
+      time,
+      items: cart,
+      total: calculateTotal(),
+      cashier: user?.displayName || 'الكاشير',
+      sessionId: activeSession?.id || null,
+    });
+
+    setLatestInvoice(created);
+    setCart([]);
+
+    await Promise.all([loadProducts(), loadSessions()]);
 
     try {
-      const created = await api.createSale({
-        invoiceNumber,
-        date,
-        time,
-        items: cart,
-        total: calculateTotal(),
-        cashier: user?.displayName || 'الكاشير',
-        sessionId: activeSession?.id || null,
+      await printSaleReceiptQz(created);
+
+      toast({
+        title: 'تمت عملية البيع بنجاح',
+        description: `تم حفظ الفاتورة وطباعتها - المبلغ: ${calculateTotal().toFixed(2)} د.ل`,
       });
-      setLatestInvoice(created);
-      toast({ title: 'تمت عملية البيع بنجاح', description: `رقم الفاتورة: ${invoiceNumber} - المبلغ: ${calculateTotal().toFixed(2)} د.ل` });
-      setCart([]);
-      await Promise.all([loadProducts(), loadSessions()]);
-    } catch (error) {
-      toast({ title: 'تعذر إتمام البيع', description: error instanceof Error ? error.message : 'حدث خطأ غير متوقع', variant: 'destructive' });
+    } catch (printError) {
+      console.error('QZ print failed:', printError);
+
+      printSaleReceipt(created);
+
+      toast({
+        title: 'تمت عملية البيع',
+        description: 'تم حفظ الفاتورة. تعذرت الطباعة عبر QZ Tray، فتم فتح الطباعة العادية.',
+      });
     }
-  };
+  } catch (error) {
+    toast({
+      title: 'تعذر إتمام البيع',
+      description: error instanceof Error ? error.message : 'حدث خطأ غير متوقع',
+      variant: 'destructive',
+    });
+  }
+};
 
   const startSession = async () => {
     try {
@@ -177,11 +208,11 @@ const SalesInterface = () => {
 
   return (
     <div className="space-y-6">
-      <Card className="bg-white/60 backdrop-blur-sm border-blue-100">
+      <Card className="bg-white/60 backdrop-blur-sm border-cafe-beige">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <CardTitle className="text-blue-800 flex items-center gap-2"><History className="w-5 h-5" />جلسات البيع</CardTitle>
+              <CardTitle className="text-cafe-brown-dark flex items-center gap-2"><History className="w-5 h-5" />جلسات البيع</CardTitle>
               {activeSession ? (
                 <div className="text-sm text-gray-600 mt-2 space-y-1">
                   <div>جلسة نشطة بدأت: {new Date(activeSession.startedAt).toLocaleString('ar-SA')}</div>
@@ -201,22 +232,22 @@ const SalesInterface = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <Card className="bg-white/60 backdrop-blur-sm border-blue-100">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-blue-800"><Barcode className="w-5 h-5" />قارئ الباركود</CardTitle></CardHeader>
-            <CardContent><form onSubmit={handleBarcodeSubmit} className="flex gap-2"><Input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="امسح الباركود أو اكتبه..." className="flex-1 text-center font-mono text-lg" autoFocus /><Button type="submit" className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">إضافة</Button></form></CardContent>
+          <Card className="bg-white/60 backdrop-blur-sm border-cafe-beige">
+            <CardHeader><CardTitle className="flex items-center gap-2 text-cafe-brown-dark"><Barcode className="w-5 h-5" />قارئ الباركود</CardTitle></CardHeader>
+            <CardContent><form onSubmit={handleBarcodeSubmit} className="flex gap-2"><Input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="امسح الباركود أو اكتبه..." className="flex-1 text-center font-mono text-lg" autoFocus /><Button type="submit" className="bg-gradient-to-r from-cafe-brown to-[#7A3420] hover:from-cafe-brown hover:to-[#7A3420]">إضافة</Button></form></CardContent>
           </Card>
 
-          <Card className="bg-white/60 backdrop-blur-sm border-blue-100">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-blue-800"><Search className="w-5 h-5" />المنتجات المتاحة</CardTitle><Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ابحث عن المنتجات..." className="mt-2" /></CardHeader>
-            <CardContent><div className="grid grid-cols-2 md:grid-cols-3 gap-3">{filteredProducts.map((product) => <Card key={product.id} className="cursor-pointer hover:shadow-lg transition-all duration-200 border-blue-100 hover:border-blue-300" onClick={() => addToCart(product)}><CardContent className="p-4 text-center"><h3 className="font-semibold text-gray-800 mb-2">{product.name}</h3><p className="text-lg font-bold text-blue-600 mb-2">{product.price.toFixed(2)} د.ل</p><Badge variant="secondary" className="text-xs">متوفر: {product.stock}</Badge></CardContent></Card>)}</div></CardContent>
+          <Card className="bg-white/60 backdrop-blur-sm border-cafe-beige">
+            <CardHeader><CardTitle className="flex items-center gap-2 text-cafe-brown-dark"><Search className="w-5 h-5" />المنتجات المتاحة</CardTitle><Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ابحث عن المنتجات..." className="mt-2" /></CardHeader>
+            <CardContent><div className="grid grid-cols-2 md:grid-cols-3 gap-3">{filteredProducts.map((product) => <Card key={product.id} className="cursor-pointer hover:shadow-lg transition-all duration-200 border-cafe-beige hover:border-blue-300" onClick={() => addToCart(product)}><CardContent className="p-4 text-center"><h3 className="font-semibold text-gray-800 mb-2">{product.name}</h3><p className="text-lg font-bold text-cafe-brown mb-2">{product.price.toFixed(2)} د.ل</p><Badge variant="secondary" className="text-xs">متوفر: {product.stock}</Badge></CardContent></Card>)}</div></CardContent>
           </Card>
 
-          <Card className="bg-white/60 backdrop-blur-sm border-blue-100">
-            <CardHeader><CardTitle className="text-blue-800">سجل الجلسات</CardTitle></CardHeader>
+          <Card className="bg-white/60 backdrop-blur-sm border-cafe-beige">
+            <CardHeader><CardTitle className="text-cafe-brown-dark">سجل الجلسات</CardTitle></CardHeader>
             <CardContent>
               <div className="space-y-3 max-h-72 overflow-y-auto">
                 {sessionHistory.map((session) => (
-                  <div key={session.id} className="p-3 rounded-lg border border-blue-100 bg-white/80">
+                  <div key={session.id} className="p-3 rounded-lg border border-cafe-beige bg-white/80">
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="space-y-1 text-sm">
                         <div className="font-semibold">{session.status === 'active' ? 'جلسة نشطة' : 'جلسة مغلقة'}</div>
@@ -238,13 +269,30 @@ const SalesInterface = () => {
         </div>
 
         <div className="space-y-4">
-          <Card className="bg-white/80 backdrop-blur-sm border-blue-100 sticky top-24">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-blue-800"><Receipt className="w-5 h-5" />سلة المشتريات</CardTitle></CardHeader>
+          <Card className="bg-white/80 backdrop-blur-sm border-cafe-beige sticky top-24">
+            <CardHeader><CardTitle className="flex items-center gap-2 text-cafe-brown-dark"><Receipt className="w-5 h-5" />سلة المشتريات</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               {cart.length === 0 ? <p className="text-center text-gray-500 py-8">السلة فارغة</p> : <>
-                <div className="space-y-3 max-h-96 overflow-y-auto">{cart.map((item) => <div key={item.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg gap-2"><div className="flex-1"><h4 className="font-semibold text-gray-800">{item.name}</h4><p className="text-sm text-blue-600">{item.price.toFixed(2)} د.ل</p></div><div className="flex items-center gap-2"><Button size="sm" variant="outline" onClick={() => updateQuantity(item.id, item.quantity - 1)}><Minus className="w-3 h-3" /></Button><span className="w-8 text-center font-semibold">{item.quantity}</span><Button size="sm" variant="outline" onClick={() => updateQuantity(item.id, item.quantity + 1)}><Plus className="w-3 h-3" /></Button><Button size="sm" variant="destructive" onClick={() => removeFromCart(item.id)}><Trash2 className="w-3 h-3" /></Button></div></div>)}</div>
+                <div className="space-y-3 max-h-96 overflow-y-auto">{cart.map((item) => <div key={item.id} className="flex items-center justify-between p-3 bg-cafe-cream rounded-lg gap-2"><div className="flex-1"><h4 className="font-semibold text-gray-800">{item.name}</h4><p className="text-sm text-cafe-brown">{item.price.toFixed(2)} د.ل</p></div><div className="flex items-center gap-2"><Button size="sm" variant="outline" onClick={() => updateQuantity(item.id, item.quantity - 1)}><Minus className="w-3 h-3" /></Button><span className="w-8 text-center font-semibold">{item.quantity}</span><Button size="sm" variant="outline" onClick={() => updateQuantity(item.id, item.quantity + 1)}><Plus className="w-3 h-3" /></Button><Button size="sm" variant="destructive" onClick={() => removeFromCart(item.id)}><Trash2 className="w-3 h-3" /></Button></div></div>)}</div>
                 <Separator />
-                <div className="space-y-3"><div className="flex justify-between items-center text-lg font-bold"><span>الإجمالي:</span><span className="text-blue-600">{calculateTotal().toFixed(2)} د.ل</span></div><div className="grid grid-cols-2 gap-2"><Button variant="outline" className="border-blue-200 hover:bg-blue-50" disabled={!latestInvoice} onClick={() => latestInvoice && printSaleReceipt(latestInvoice)}><Printer className="w-4 h-4 mr-2" />طباعة</Button><Button onClick={handleCheckout} className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600">إتمام البيع</Button></div></div>
+                <div className="space-y-3"><div className="flex justify-between items-center text-lg font-bold"><span>الإجمالي:</span><span className="text-cafe-brown">{calculateTotal().toFixed(2)} د.ل</span></div><div className="grid grid-cols-2 gap-2"><Button
+                  variant="outline"
+                  className="border-cafe-sand hover:bg-cafe-cream"
+                  disabled={!latestInvoice}
+                  onClick={async () => {
+                    if (!latestInvoice) return;
+
+                    try {
+                      await printSaleReceiptQz(latestInvoice);
+                    } catch (error) {
+                      console.error('QZ print failed:', error);
+                      printSaleReceipt(latestInvoice);
+                    }
+                  }}
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  طباعة
+                </Button><Button onClick={handleCheckout} className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600">إتمام البيع</Button></div></div>
               </>}
             </CardContent>
           </Card>

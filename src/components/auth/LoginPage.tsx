@@ -27,10 +27,10 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center px-4" dir="rtl">
-      <Card className="w-full max-w-md border-blue-100 shadow-xl bg-white/90 backdrop-blur-sm">
+    <div className="min-h-screen bg-gradient-to-br from-cafe-cream via-cafe-beige to-cafe-sand flex items-center justify-center px-4" dir="rtl">
+      <Card className="w-full max-w-md border-cafe-beige shadow-xl bg-white/90 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle className="text-2xl text-center text-blue-800">تسجيل الدخول</CardTitle>
+          <CardTitle className="text-2xl text-center text-cafe-brown-dark">تسجيل الدخول</CardTitle>
           <p className="text-center text-sm text-gray-500">الدخول حسب مستوى الصلاحية: مدير أو موظف كافيه</p>
         </CardHeader>
         <CardContent>
@@ -43,7 +43,7 @@ const LoginPage = () => {
               <Label htmlFor="password">كلمة المرور</Label>
               <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="أدخل كلمة المرور" />
             </div>
-            <Button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
+            <Button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-cafe-brown to-[#7A3420] hover:from-cafe-brown hover:to-[#7A3420]">
               {isSubmitting ? 'جارٍ الدخول...' : 'دخول'}
             </Button>
             <div className="text-xs text-gray-500 bg-gray-50 rounded-md p-3 leading-6">
