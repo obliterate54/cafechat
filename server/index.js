@@ -2,10 +2,12 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 
 const PORT = Number(process.env.PORT || 3001);
 const MONGODB_URI = process.env.MONGODB_URI;
 const FRONTEND_URL = process.env.FRONTEND_URL;
+const SESSION_SECRET = process.env.SESSION_SECRET || 'change-me-in-production';
 
 if (!MONGODB_URI) {
   console.error('MONGODB_URI is missing from environment variables.');
@@ -17,7 +19,8 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:8080',
   'http://localhost:8081',
-  FRONTEND_URL
+  'http://localhost:5173',
+  FRONTEND_URL,
 ].filter(Boolean);
 
 app.use(cors({
@@ -49,8 +52,8 @@ const seed = {
       date: '2024-01-15',
       time: '10:30',
       items: [
-        { productName: 'كوكا كولا', barcode: '1234567890123', quantity: 50, purchasePrice: 2, salePrice: 2.5, category: 'مشروبات' },
-        { productName: 'شيبس', barcode: '1234567890124', quantity: 30, purchasePrice: 1, salePrice: 1.5, category: 'وجبات خفيفة' }
+        { index: '1', productName: 'كوكا كولا', barcode: '1234567890123', quantity: 50, purchasePrice: 2, salePrice: 2.5, category: 'مشروبات' },
+        { index: '2', productName: 'شيبس', barcode: '1234567890124', quantity: 30, purchasePrice: 1, salePrice: 1.5, category: 'وجبات خفيفة' }
       ],
       total: 130
     }
@@ -65,12 +68,16 @@ const seed = {
         { productId: null, name: 'شيبس', price: 1.5, quantity: 1, barcode: '67890' }
       ],
       total: 6.5,
-      cashier: 'البائع الرئيسي'
+      cashier: 'البائع الرئيسي',
+      sessionId: null,
     }
   ]
 };
 
 const toClientId = (value) => String(value);
+const nowIso = () => new Date().toISOString();
+const hashPassword = (password) => crypto.createHash('sha256').update(`${SESSION_SECRET}:${password}`).digest('hex');
+const generateToken = () => crypto.randomBytes(48).toString('hex');
 
 const withClientId = (doc) => {
   if (!doc) return doc;
@@ -94,6 +101,7 @@ const productSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const purchaseItemSchema = new mongoose.Schema({
+  index: { type: String, default: '' },
   productName: { type: String, required: true },
   barcode: { type: String, default: '' },
   quantity: { type: Number, required: true, min: 0 },
@@ -125,19 +133,86 @@ const salesInvoiceSchema = new mongoose.Schema({
   time: { type: String, required: true },
   items: { type: [saleItemSchema], default: [] },
   total: { type: Number, required: true, min: 0 },
-  cashier: { type: String, default: '' }
+  cashier: { type: String, default: '' },
+  sessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesSession', default: null },
+  cancelledAt: { type: String, default: '' },
+  cancelledBy: { type: String, default: '' },
+}, { timestamps: true });
+
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, trim: true },
+  displayName: { type: String, required: true, trim: true },
+  passwordHash: { type: String, required: true },
+  role: { type: String, enum: ['admin', 'worker'], required: true },
+  isActive: { type: Boolean, default: true },
+}, { timestamps: true });
+
+const userSessionSchema = new mongoose.Schema({
+  token: { type: String, required: true, unique: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  expiresAt: { type: Date, required: true },
+}, { versionKey: false });
+userSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const salesSessionSchema = new mongoose.Schema({
+  startedAt: { type: String, required: true },
+  endedAt: { type: String, default: '' },
+  openedBy: { type: String, required: true },
+  closedBy: { type: String, default: '' },
+  status: { type: String, enum: ['active', 'closed'], default: 'active' },
+  comments: { type: String, default: '' },
+  totalSalesAmount: { type: Number, default: 0 },
+  totalInvoices: { type: Number, default: 0 },
+  totalItems: { type: Number, default: 0 },
 }, { timestamps: true });
 
 const Category = mongoose.model('Category', categorySchema);
 const Product = mongoose.model('Product', productSchema);
 const PurchaseInvoice = mongoose.model('PurchaseInvoice', purchaseInvoiceSchema);
 const SalesInvoice = mongoose.model('SalesInvoice', salesInvoiceSchema);
+const User = mongoose.model('User', userSchema);
+const UserSession = mongoose.model('UserSession', userSessionSchema);
+const SalesSession = mongoose.model('SalesSession', salesSessionSchema);
 
 function sameDay(dateStr, from, to) {
   if (!dateStr) return false;
   if (from && dateStr < from) return false;
   if (to && dateStr > to) return false;
   return true;
+}
+
+function sanitizeUser(user) {
+  if (!user) return null;
+  return {
+    id: toClientId(user._id),
+    username: user.username,
+    displayName: user.displayName,
+    role: user.role,
+    isActive: user.isActive,
+  };
+}
+
+function mapSaleForClient(invoice) {
+  return {
+    ...withClientId(invoice),
+    sessionId: invoice.sessionId ? String(invoice.sessionId) : null,
+    items: (invoice.items || []).map((item) => ({
+      id: item.productId ? String(item.productId) : '',
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      barcode: item.barcode || '',
+    }))
+  };
+}
+
+function mapSessionForClient(session) {
+  const raw = withClientId(session);
+  return {
+    ...raw,
+    isActive: raw.status === 'active',
+  };
 }
 
 async function ensureCategory(categoryName) {
@@ -171,44 +246,32 @@ async function upsertProductFromPurchase(item) {
   });
 }
 
-async function seedDatabaseIfEmpty() {
-  const [categoryCount, productCount, purchaseCount, salesCount] = await Promise.all([
-    Category.countDocuments(),
-    Product.countDocuments(),
-    PurchaseInvoice.countDocuments(),
-    SalesInvoice.countDocuments()
-  ]);
-
-  if (categoryCount + productCount + purchaseCount + salesCount > 0) {
-    return;
-  }
-
-  const categories = await Category.insertMany(seed.categories);
-  const products = await Product.insertMany(seed.products);
-  await PurchaseInvoice.insertMany(seed.purchaseInvoices);
-
-  const productMap = new Map(products.map((product) => [product.name, product._id]));
-  const sales = seed.salesInvoices.map((invoice) => ({
-    ...invoice,
-    items: invoice.items.map((item) => ({
-      ...item,
-      productId: productMap.get(item.name) || null
-    }))
-  }));
-
-  await SalesInvoice.insertMany(sales);
-
-  for (const item of sales[0]?.items || []) {
+async function restoreProductStockFromSale(invoice) {
+  for (const item of invoice.items || []) {
     if (!item.productId) continue;
-    await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -Number(item.quantity || 0) } });
+    await Product.findByIdAndUpdate(item.productId, { $inc: { stock: Number(item.quantity || 0) } });
   }
+}
 
-  console.log(`Seeded MongoDB with ${categories.length} categories and ${products.length} products.`);
+async function recalculateSessionTotals(sessionId) {
+  if (!sessionId) return;
+  const invoices = await SalesInvoice.find({ sessionId, cancelledAt: '' }).lean();
+  const totalSalesAmount = invoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+  const totalInvoices = invoices.length;
+  const totalItems = invoices.reduce((sum, invoice) => sum + (invoice.items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0), 0);
+
+  await SalesSession.findByIdAndUpdate(sessionId, {
+    $set: {
+      totalSalesAmount,
+      totalInvoices,
+      totalItems,
+    }
+  });
 }
 
 async function buildReports(from, to) {
   const [salesInvoices, purchaseInvoices, products] = await Promise.all([
-    SalesInvoice.find().lean(),
+    SalesInvoice.find({ cancelledAt: '' }).lean(),
     PurchaseInvoice.find().lean(),
     Product.find().lean()
   ]);
@@ -282,17 +345,123 @@ async function buildReports(from, to) {
   };
 }
 
+async function authMiddleware(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) return res.status(401).json({ message: 'يجب تسجيل الدخول أولاً' });
+
+  const session = await UserSession.findOne({ token }).lean();
+  if (!session) return res.status(401).json({ message: 'الجلسة غير صالحة أو منتهية' });
+
+  const user = await User.findById(session.userId);
+  if (!user || !user.isActive) return res.status(401).json({ message: 'المستخدم غير متاح' });
+
+  req.user = user;
+  req.sessionToken = token;
+  next();
+}
+
+function requireRoles(...roles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: 'غير مصرح' });
+    if (!roles.includes(req.user.role)) return res.status(403).json({ message: 'ليس لديك صلاحية للوصول إلى هذا القسم' });
+    next();
+  };
+}
+
+async function seedDatabaseIfEmpty() {
+  const [categoryCount, productCount, purchaseCount, salesCount, userCount] = await Promise.all([
+    Category.countDocuments(),
+    Product.countDocuments(),
+    PurchaseInvoice.countDocuments(),
+    SalesInvoice.countDocuments(),
+    User.countDocuments(),
+  ]);
+
+  if (userCount === 0) {
+    await User.insertMany([
+      {
+        username: 'admin',
+        displayName: 'مدير النظام',
+        passwordHash: hashPassword('admin123'),
+        role: 'admin',
+      },
+      {
+        username: 'cafe',
+        displayName: 'موظف الكافيه',
+        passwordHash: hashPassword('cafe123'),
+        role: 'worker',
+      }
+    ]);
+    console.log('Seeded default users: admin/admin123 and cafe/cafe123');
+  }
+
+  if (categoryCount + productCount + purchaseCount + salesCount > 0) {
+    return;
+  }
+
+  const categories = await Category.insertMany(seed.categories);
+  const products = await Product.insertMany(seed.products);
+  await PurchaseInvoice.insertMany(seed.purchaseInvoices);
+
+  const productMap = new Map(products.map((product) => [product.name, product._id]));
+  const sales = seed.salesInvoices.map((invoice) => ({
+    ...invoice,
+    items: invoice.items.map((item) => ({
+      ...item,
+      productId: productMap.get(item.name) || null
+    }))
+  }));
+
+  await SalesInvoice.insertMany(sales);
+
+  for (const item of sales[0]?.items || []) {
+    if (!item.productId) continue;
+    await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -Number(item.quantity || 0) } });
+  }
+
+  console.log(`Seeded MongoDB with ${categories.length} categories and ${products.length} products.`);
+}
+
 app.get('/api/health', async (_req, res) => {
   const state = mongoose.connection.readyState;
   res.json({ ok: true, database: state === 1 ? 'connected' : 'disconnected' });
 });
 
-app.get('/api/categories', async (_req, res) => {
+app.post('/api/auth/login', async (req, res) => {
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
+  const user = await User.findOne({ username });
+
+  if (!user || user.passwordHash !== hashPassword(password) || !user.isActive) {
+    return res.status(401).json({ message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+  }
+
+  const token = generateToken();
+  await UserSession.create({
+    token,
+    userId: user._id,
+    expiresAt: new Date(Date.now() + (1000 * 60 * 60 * 24 * 7)),
+  });
+
+  res.json({ token, user: sanitizeUser(user) });
+});
+
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  res.json({ user: sanitizeUser(req.user) });
+});
+
+app.post('/api/auth/logout', authMiddleware, async (req, res) => {
+  await UserSession.deleteOne({ token: req.sessionToken });
+  res.status(204).end();
+});
+
+app.get('/api/categories', authMiddleware, requireRoles('admin'), async (_req, res) => {
   const categories = await Category.find().sort({ createdAt: 1 });
   res.json(categories.map(withClientId));
 });
 
-app.post('/api/categories', async (req, res) => {
+app.post('/api/categories', authMiddleware, requireRoles('admin'), async (req, res) => {
   const category = await Category.create({
     name: req.body.name,
     description: req.body.description || '',
@@ -301,19 +470,12 @@ app.post('/api/categories', async (req, res) => {
   res.status(201).json(withClientId(category));
 });
 
-app.put('/api/categories/:id', async (req, res) => {
+app.put('/api/categories/:id', authMiddleware, requireRoles('admin'), async (req, res) => {
   const { id } = req.params;
   const { previousName, ...updates } = req.body;
 
-  const category = await Category.findByIdAndUpdate(
-    id,
-    { $set: updates },
-    { new: true, runValidators: true }
-  );
-
-  if (!category) {
-    return res.status(404).json({ message: 'التصنيف غير موجود' });
-  }
+  const category = await Category.findByIdAndUpdate(id, { $set: updates }, { new: true, runValidators: true });
+  if (!category) return res.status(404).json({ message: 'التصنيف غير موجود' });
 
   if (previousName && previousName !== updates.name && updates.name) {
     await Product.updateMany({ category: previousName }, { $set: { category: updates.name } });
@@ -322,20 +484,18 @@ app.put('/api/categories/:id', async (req, res) => {
   res.json(withClientId(category));
 });
 
-app.delete('/api/categories/:id', async (req, res) => {
+app.delete('/api/categories/:id', authMiddleware, requireRoles('admin'), async (req, res) => {
   const category = await Category.findByIdAndDelete(req.params.id);
-  if (category) {
-    await Product.updateMany({ category: category.name }, { $set: { category: '' } });
-  }
+  if (category) await Product.updateMany({ category: category.name }, { $set: { category: '' } });
   res.status(204).end();
 });
 
-app.get('/api/products', async (_req, res) => {
+app.get('/api/products', authMiddleware, requireRoles('admin', 'worker'), async (_req, res) => {
   const products = await Product.find().sort({ createdAt: 1 });
   res.json(products.map(withClientId));
 });
 
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
   const product = await Product.create({
     ...req.body,
     price: Number(req.body.price || 0),
@@ -345,66 +505,69 @@ app.post('/api/products', async (req, res) => {
   res.status(201).json(withClientId(product));
 });
 
-app.put('/api/products/:id', async (req, res) => {
+app.put('/api/products/:id', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
   const product = await Product.findByIdAndUpdate(
     req.params.id,
-    {
-      ...req.body,
-      price: Number(req.body.price || 0),
-      stock: Number(req.body.stock || 0)
-    },
+    { ...req.body, price: Number(req.body.price || 0), stock: Number(req.body.stock || 0) },
     { new: true, runValidators: true }
   );
 
-  if (!product) {
-    return res.status(404).json({ message: 'المنتج غير موجود' });
-  }
-
+  if (!product) return res.status(404).json({ message: 'المنتج غير موجود' });
   await ensureCategory(product.category);
   res.json(withClientId(product));
 });
 
-app.delete('/api/products/:id', async (req, res) => {
+app.delete('/api/products/:id', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
   await Product.findByIdAndDelete(req.params.id);
   res.status(204).end();
 });
 
-app.get('/api/purchases', async (_req, res) => {
+app.get('/api/purchases', authMiddleware, requireRoles('admin'), async (_req, res) => {
   const invoices = await PurchaseInvoice.find().sort({ date: -1, time: -1, createdAt: -1 });
   res.json(invoices.map(withClientId));
 });
 
-app.post('/api/purchases', async (req, res) => {
-  const invoice = await PurchaseInvoice.create(req.body);
+app.post('/api/purchases', authMiddleware, requireRoles('admin'), async (req, res) => {
+  const normalizedItems = (req.body.items || []).map((item) => ({
+    index: String(item.index || ''),
+    productName: item.productName,
+    barcode: item.barcode || '',
+    quantity: Number(item.quantity || 0),
+    purchasePrice: Number(item.purchasePrice || 0),
+    salePrice: Number(item.salePrice || 0),
+    category: item.category || '',
+  }));
+
+  const invoice = await PurchaseInvoice.create({
+    ...req.body,
+    items: normalizedItems,
+    total: Number(req.body.total || 0),
+  });
+
   for (const item of invoice.items || []) {
     await ensureCategory(item.category);
     await upsertProductFromPurchase(item);
   }
+
   res.status(201).json(withClientId(invoice));
 });
 
-app.get('/api/sales', async (_req, res) => {
-  const invoices = await SalesInvoice.find().sort({ date: -1, time: -1, createdAt: -1 });
-  res.json(invoices.map((invoice) => ({
-    ...withClientId(invoice),
-    items: (invoice.items || []).map((item) => ({
-      id: item.productId ? String(item.productId) : '',
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity,
-      barcode: item.barcode || ''
-    }))
-  })));
+app.delete('/api/purchases/:id', authMiddleware, requireRoles('admin'), async (req, res) => {
+  await PurchaseInvoice.findByIdAndDelete(req.params.id);
+  res.status(204).end();
 });
 
-app.post('/api/sales', async (req, res) => {
+app.get('/api/sales', authMiddleware, requireRoles('admin', 'worker'), async (_req, res) => {
+  const invoices = await SalesInvoice.find({ cancelledAt: '' }).sort({ date: -1, time: -1, createdAt: -1 });
+  res.json(invoices.map(mapSaleForClient));
+});
+
+app.post('/api/sales', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
   const normalizedItems = [];
 
   for (const item of req.body.items || []) {
     const product = await Product.findById(item.id);
-    if (!product) {
-      return res.status(400).json({ message: `المنتج غير موجود: ${item.name}` });
-    }
+    if (!product) return res.status(400).json({ message: `المنتج غير موجود: ${item.name}` });
     if (Number(product.stock || 0) < Number(item.quantity || 0)) {
       return res.status(400).json({ message: `المخزون غير كافٍ للمنتج: ${item.name}` });
     }
@@ -418,6 +581,14 @@ app.post('/api/sales', async (req, res) => {
     });
   }
 
+  const sessionId = req.body.sessionId || null;
+  if (sessionId) {
+    const session = await SalesSession.findById(sessionId);
+    if (!session || session.status !== 'active') {
+      return res.status(400).json({ message: 'جلسة البيع غير متاحة أو تم إغلاقها' });
+    }
+  }
+
   for (const item of normalizedItems) {
     await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -Number(item.quantity || 0) } });
   }
@@ -425,22 +596,85 @@ app.post('/api/sales', async (req, res) => {
   const invoice = await SalesInvoice.create({
     ...req.body,
     items: normalizedItems,
-    total: Number(req.body.total || 0)
+    total: Number(req.body.total || 0),
+    cashier: req.user.displayName,
+    sessionId,
+    cancelledAt: '',
+    cancelledBy: '',
   });
 
-  res.status(201).json({
-    ...withClientId(invoice),
-    items: normalizedItems.map((item) => ({
-      id: String(item.productId),
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity,
-      barcode: item.barcode || ''
-    }))
-  });
+  await recalculateSessionTotals(sessionId);
+
+  res.status(201).json(mapSaleForClient(invoice));
 });
 
-app.get('/api/reports/summary', async (req, res) => {
+app.delete('/api/sales/:id', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
+  const invoice = await SalesInvoice.findById(req.params.id);
+  if (!invoice) return res.status(404).json({ message: 'فاتورة البيع غير موجودة' });
+
+  await restoreProductStockFromSale(invoice);
+  const sessionId = invoice.sessionId ? String(invoice.sessionId) : null;
+  await SalesInvoice.findByIdAndDelete(invoice._id);
+  await recalculateSessionTotals(sessionId);
+
+  res.status(204).end();
+});
+
+app.get('/api/sales-sessions', authMiddleware, requireRoles('admin', 'worker'), async (_req, res) => {
+  const sessions = await SalesSession.find().sort({ createdAt: -1 });
+  res.json(sessions.map(mapSessionForClient));
+});
+
+app.get('/api/sales-sessions/active', authMiddleware, requireRoles('admin', 'worker'), async (_req, res) => {
+  const activeSession = await SalesSession.findOne({ status: 'active' }).sort({ createdAt: -1 });
+  res.json({ session: activeSession ? mapSessionForClient(activeSession) : null });
+});
+
+app.post('/api/sales-sessions/start', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
+  const existing = await SalesSession.findOne({ status: 'active' });
+  if (existing) return res.status(400).json({ message: 'هناك جلسة بيع نشطة بالفعل' });
+
+  const session = await SalesSession.create({
+    startedAt: nowIso(),
+    openedBy: req.user.displayName,
+    comments: String(req.body.comments || ''),
+    status: 'active',
+    totalSalesAmount: 0,
+    totalInvoices: 0,
+    totalItems: 0,
+  });
+
+  res.status(201).json(mapSessionForClient(session));
+});
+
+app.post('/api/sales-sessions/:id/end', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
+  const session = await SalesSession.findById(req.params.id);
+  if (!session) return res.status(404).json({ message: 'جلسة البيع غير موجودة' });
+  if (session.status === 'closed') return res.status(400).json({ message: 'تم إغلاق الجلسة مسبقًا' });
+
+  session.status = 'closed';
+  session.endedAt = nowIso();
+  session.closedBy = req.user.displayName;
+  session.comments = String(req.body.comments || session.comments || '');
+  await session.save();
+  await recalculateSessionTotals(session._id);
+
+  const updated = await SalesSession.findById(session._id);
+  res.json(mapSessionForClient(updated));
+});
+
+app.put('/api/sales-sessions/:id/comments', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
+  const session = await SalesSession.findByIdAndUpdate(
+    req.params.id,
+    { $set: { comments: String(req.body.comments || '') } },
+    { new: true, runValidators: true }
+  );
+
+  if (!session) return res.status(404).json({ message: 'جلسة البيع غير موجودة' });
+  res.json(mapSessionForClient(session));
+});
+
+app.get('/api/reports/summary', authMiddleware, requireRoles('admin'), async (req, res) => {
   const from = String(req.query.from || '');
   const to = String(req.query.to || '');
   const report = await buildReports(from, to);
@@ -465,9 +699,7 @@ app.use((error, _req, res, _next) => {
 async function start() {
   await mongoose.connect(MONGODB_URI);
   console.log('Connected to MongoDB');
-
   await seedDatabaseIfEmpty();
-
   app.listen(PORT, () => {
     console.log(`POS backend running on port ${PORT}`);
   });

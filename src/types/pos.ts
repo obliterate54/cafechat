@@ -23,6 +23,7 @@ export interface CartItem {
 }
 
 export interface InvoiceItem {
+  index?: string;
   productName: string;
   barcode: string;
   quantity: number;
@@ -49,6 +50,7 @@ export interface SaleInvoice {
   items: CartItem[];
   total: number;
   cashier: string;
+  sessionId?: string | null;
 }
 
 export interface ReportsSummary {
@@ -58,4 +60,33 @@ export interface ReportsSummary {
   topSellingProducts: Array<{ name: string; quantity: number; revenue: number }>;
   purchasedItems: Array<{ name: string; quantity: number; cost: number }>;
   soldItems: Array<{ name: string; quantity: number; remaining: number }>;
+}
+
+export type UserRole = 'admin' | 'worker';
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  isActive: boolean;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: AuthUser;
+}
+
+export interface SalesSession {
+  id: string;
+  startedAt: string;
+  endedAt?: string;
+  openedBy: string;
+  closedBy?: string;
+  status: 'active' | 'closed';
+  comments: string;
+  totalSalesAmount: number;
+  totalInvoices: number;
+  totalItems: number;
+  isActive: boolean;
 }
