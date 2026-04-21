@@ -8,11 +8,40 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { Search, Barcode, Plus, Minus, Trash2, Printer, Receipt, PlayCircle, StopCircle, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { api } from '@/lib/api';
+import { api, getSalesSessionSummary } from '@/lib/api';
 import type { CartItem, Product, SaleInvoice, SalesSession } from '@/types/pos';
 import { useAuth } from '@/contexts/AuthContext';
 import { printSaleReceipt } from '@/lib/receipt';
-import { printSaleReceiptQz } from '@/lib/qzPrint';
+import { printSaleReceiptQz, printSessionSummaryReceiptQz } from '@/lib/qzPrint';
+import { printSessionSummaryReceipt } from '@/lib/sessionReceipt';
+
+const formatEnglishDate = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+};
+
+const formatEnglishTime = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const formatEnglishDateTime = (value?: string | null) => {
+  if (!value) return '-';
+  return `${formatEnglishDate(value)} ${formatEnglishTime(value)}`;
+};
 
 const SalesInterface = () => {
   const { user } = useAuth();
@@ -30,6 +59,25 @@ const SalesInterface = () => {
   const [isCommentsDialogOpen, setIsCommentsDialogOpen] = useState(false);
   const { toast } = useToast();
 
+  const handlePrintSessionSummaryBrowser = async (sessionId: string) => {
+  try {
+    const summary = await getSalesSessionSummary(sessionId);
+    printSessionSummaryReceipt(summary);
+  } catch (error) {
+    console.error(error);
+    alert(error instanceof Error ? error.message : 'فشل في طباعة كشف حساب الوردية');
+  }
+};
+
+const handlePrintSessionSummaryQz = async (sessionId: string) => {
+  try {
+    const summary = await getSalesSessionSummary(sessionId);
+    await printSessionSummaryReceiptQz(summary);
+  } catch (error) {
+    console.error(error);
+    alert(error instanceof Error ? error.message : 'فشل في طباعة كشف حساب الوردية عبر الطابعة');
+  }
+};
   const loadProducts = async () => {
     try {
       setProducts(await api.getProducts());
@@ -114,10 +162,10 @@ const SalesInterface = () => {
 
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
-  const time = now.toLocaleTimeString('ar-SA', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const time = now.toLocaleTimeString('en-GB', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
   const invoiceNumber = `INV-${date.replace(/-/g, '')}-${now.getTime().toString().slice(-4)}`;
 
   try {
@@ -215,7 +263,7 @@ const SalesInterface = () => {
               <CardTitle className="text-cafe-brown-dark flex items-center gap-2"><History className="w-5 h-5" />جلسات البيع</CardTitle>
               {activeSession ? (
                 <div className="text-sm text-gray-600 mt-2 space-y-1">
-                  <div>جلسة نشطة بدأت: {new Date(activeSession.startedAt).toLocaleString('ar-SA')}</div>
+                  <div>جلسة نشطة بدأت: {formatEnglishDateTime(activeSession.startedAt)}</div>
                   <div>الفواتير: {activeSession.totalInvoices} | القطع: {activeSession.totalItems} | الإجمالي: {activeSession.totalSalesAmount.toFixed(2)} د.ل</div>
                 </div>
               ) : (
@@ -251,13 +299,46 @@ const SalesInterface = () => {
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="space-y-1 text-sm">
                         <div className="font-semibold">{session.status === 'active' ? 'جلسة نشطة' : 'جلسة مغلقة'}</div>
-                        <div>من: {new Date(session.startedAt).toLocaleString('ar-SA')}</div>
-                        {session.endedAt && <div>إلى: {new Date(session.endedAt).toLocaleString('ar-SA')}</div>}
+                        <div>من: {formatEnglishDateTime(session.startedAt)}</div>
+                        {session.endedAt && <div>إلى: {formatEnglishDateTime(session.endedAt)}</div>}
                         <div>الفواتير: {session.totalInvoices} | الإجمالي: {session.totalSalesAmount.toFixed(2)} د.ل</div>
                       </div>
-                      <div className="flex gap-2 items-center">
-                        <Badge variant={session.status === 'active' ? 'secondary' : 'outline'}>{session.status === 'active' ? 'نشطة' : 'مغلقة'}</Badge>
-                        <Button variant="outline" size="sm" onClick={() => { setEditingSession(session); setSessionComment(session.comments || ''); setIsCommentsDialogOpen(true); }}>تعديل التعليق</Button>
+                      <div className="flex gap-2 items-center flex-wrap">
+                        <Badge variant={session.status === 'active' ? 'secondary' : 'outline'}>
+                          {session.status === 'active' ? 'نشطة' : 'مغلقة'}
+                        </Badge>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-cafe-sand hover:bg-cafe-cream"
+                          onClick={() => handlePrintSessionSummaryQz(session.id)}
+                        >
+                          <Printer className="w-4 h-4 ml-2" />
+                          كشف الوردية عبر الطابعة
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-cafe-sand hover:bg-cafe-cream"
+                          onClick={() => handlePrintSessionSummaryBrowser(session.id)}
+                        >
+                          <Printer className="w-4 h-4 ml-2" />
+                          كشف الوردية PDF / المتصفح
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingSession(session);
+                            setSessionComment(session.comments || '');
+                            setIsCommentsDialogOpen(true);
+                          }}
+                        >
+                          تعديل التعليق
+                        </Button>
                       </div>
                     </div>
                     {session.comments && <p className="text-sm text-gray-600 mt-2">ملاحظة: {session.comments}</p>}

@@ -40,6 +40,77 @@ app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '1mb' }));
 
+app.get('/api/sales-sessions/:id/summary', authMiddleware, requireRoles('admin', 'worker'), async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+      return res.status(400).json({ message: 'معرّف الجلسة غير صالح' });
+    }
+
+    const session = await SalesSession.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ message: 'الجلسة غير موجودة' });
+    }
+
+    const invoices = await SalesInvoice.find({
+      cancelledAt: '',
+      sessionId: session._id,
+    }).sort({ createdAt: 1 });
+
+    const productsMap = new Map();
+    let totalInvoices = invoices.length;
+    let totalItems = 0;
+    let totalSalesAmount = 0;
+
+    for (const invoice of invoices) {
+      totalSalesAmount += Number(invoice.total || 0);
+
+      for (const item of invoice.items || []) {
+        const name = item.name || 'غير معروف';
+        const quantity = Number(item.quantity || 0);
+        const price = Number(item.price || 0);
+        const amount = quantity * price;
+
+        totalItems += quantity;
+
+        if (!productsMap.has(name)) {
+          productsMap.set(name, {
+            name,
+            quantity: 0,
+            amount: 0,
+          });
+        }
+
+        const existing = productsMap.get(name);
+        existing.quantity += quantity;
+        existing.amount += amount;
+      }
+    }
+
+    const products = Array.from(productsMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, 'ar')
+    );
+
+    return res.json({
+      sessionId: String(session._id),
+      sessionName: '',
+      startedAt: session.startedAt,
+      endedAt: session.endedAt || null,
+      totalInvoices,
+      totalItems,
+      totalSalesAmount,
+      products,
+      comments: session.comments || '',
+    });
+  } catch (error) {
+    console.error('Failed to build session summary:', error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : 'فشل في إنشاء كشف الوردية',
+    });
+  }
+});
+
 const seed = {
   categories: [
     { name: 'مشروبات', description: '', color: '#3B82F6' },
@@ -181,6 +252,10 @@ const SalesInvoice = mongoose.model('SalesInvoice', salesInvoiceSchema);
 const User = mongoose.model('User', userSchema);
 const UserSession = mongoose.model('UserSession', userSessionSchema);
 const SalesSession = mongoose.model('SalesSession', salesSessionSchema);
+
+function toEnglishDigits(value) {
+  return String(value ?? '');
+}
 
 function sameDay(dateStr, from, to) {
   if (!dateStr) return false;

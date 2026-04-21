@@ -7,6 +7,7 @@ import type {
   ReportsSummary,
   SaleInvoice,
   SalesSession,
+  SessionSummary,
 } from '@/types/pos';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -17,6 +18,10 @@ export const authStorage = {
   setToken: (token: string) => localStorage.setItem(TOKEN_KEY, token),
   clearToken: () => localStorage.removeItem(TOKEN_KEY),
 };
+
+export async function getSalesSessionSummary(sessionId: string): Promise<SessionSummary> {
+  return request<SessionSummary>(`/sales-sessions/${sessionId}/summary`);
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = authStorage.getToken();

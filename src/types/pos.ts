@@ -90,3 +90,21 @@ export interface SalesSession {
   totalItems: number;
   isActive: boolean;
 }
+
+export interface SessionSummaryItem {
+  name: string;
+  quantity: number;
+  amount: number;
+}
+
+export interface SessionSummary {
+  sessionId: string;
+  sessionName?: string;
+  startedAt: string;
+  endedAt?: string | null;
+  totalInvoices: number;
+  totalItems: number;
+  totalSalesAmount: number;
+  products: SessionSummaryItem[];
+  comments?: string;
+}

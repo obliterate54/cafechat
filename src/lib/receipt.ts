@@ -8,6 +8,24 @@ const LOGO_URL = `${window.location.origin}/cafe-jehad-logo.jpg`;
 
 const formatMoney = (value: number) => `${value.toFixed(2)} ${CURRENCY}`;
 
+const toEnglishDigits = (value: string) =>
+  value
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+
+const normalizeTime = (value?: string | null) => {
+  if (!value) return '-';
+
+  return toEnglishDigits(value)
+    .replace('ص', 'AM')
+    .replace('م', 'PM');
+};
+
+const normalizeDate = (value?: string | null) => {
+  if (!value) return '-';
+  return toEnglishDigits(value);
+};
+
 export function printSaleReceipt(invoice: SaleInvoice) {
   const receiptWindow = window.open('', '_blank', 'width=420,height=800');
 
@@ -169,8 +187,8 @@ export function printSaleReceipt(invoice: SaleInvoice) {
         <div class="meta center">
           <div>فاتورة بيع</div>
           <div>رقم الفاتورة: ${invoice.invoiceNumber}</div>
-          <div>التاريخ: ${invoice.date}</div>
-          <div>الوقت: ${invoice.time}</div>
+          <div>التاريخ: ${normalizeDate(invoice.date)}</div>
+<div>الوقت: ${normalizeTime(invoice.time)}</div>
           <div>الكاشير: ${cashierName}</div>
         </div>
 

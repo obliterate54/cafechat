@@ -11,6 +11,24 @@ import type { SaleInvoice } from '@/types/pos';
 import { printSaleReceipt } from '@/lib/receipt';
 import { printSaleReceiptQz } from '@/lib/qzPrint';
 
+const toEnglishDigits = (value: string) =>
+  value
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+
+const normalizeDate = (value?: string | null) => {
+  if (!value) return '-';
+  return toEnglishDigits(value);
+};
+
+const normalizeTime = (value?: string | null) => {
+  if (!value) return '-';
+
+  return toEnglishDigits(value)
+    .replace(/\s*ص/g, ' AM')
+    .replace(/\s*م/g, ' PM');
+};
+
 const SalesInvoices = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<SaleInvoice | null>(null);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
@@ -61,7 +79,7 @@ const SalesInvoices = () => {
                     <div className="flex justify-between items-start gap-4">
                       <div className="space-y-2 cursor-pointer flex-1" onClick={() => { setSelectedInvoice(invoice); setIsInvoiceDialogOpen(true); }}>
                         <div className="flex items-center gap-2"><Badge variant="outline" className="text-cafe-brown border-blue-300">{invoice.invoiceNumber}</Badge><span className="text-sm text-gray-600">{invoice.items.length} منتج</span></div>
-                        <div className="flex items-center gap-4 text-sm text-gray-600"><div className="flex items-center gap-1"><Calendar className="w-4 h-4" />{invoice.date} - {invoice.time}</div><div className="flex items-center gap-1"><User className="w-4 h-4" />{invoice.cashier}</div></div>
+                        <div className="flex items-center gap-4 text-sm text-gray-600"><div className="flex items-center gap-1"><Calendar className="w-4 h-4" />{normalizeDate(invoice.date)} - {normalizeTime(invoice.time)}</div><div className="flex items-center gap-1"><User className="w-4 h-4" />{invoice.cashier}</div></div>
                       </div>
                       <div className="text-left">
                         <div className="text-lg font-bold text-cafe-brown">{invoice.total.toFixed(2)} د.ل</div>
@@ -86,8 +104,8 @@ const SalesInvoices = () => {
             <div className="space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-cafe-cream rounded-lg">
                 <div><span className="text-sm text-gray-600">رقم الفاتورة</span><p className="font-semibold">{selectedInvoice.invoiceNumber}</p></div>
-                <div><span className="text-sm text-gray-600">التاريخ</span><p className="font-semibold">{selectedInvoice.date}</p></div>
-                <div><span className="text-sm text-gray-600">الوقت</span><p className="font-semibold">{selectedInvoice.time}</p></div>
+                <div><span className="text-sm text-gray-600">التاريخ</span><p className="font-semibold">{normalizeDate(selectedInvoice.date)}</p></div>
+                <div><span className="text-sm text-gray-600">الوقت</span><p className="font-semibold">{normalizeTime(selectedInvoice.time)}</p></div>
                 <div><span className="text-sm text-gray-600">البائع</span><p className="font-semibold">{selectedInvoice.cashier}</p></div>
               </div>
 
